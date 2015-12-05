@@ -1,0 +1,9 @@
+<launch>
+  <arg name="lidar" default="/dev/ttyUSB0" />
+  <arg name="arduino" default="/dev/ttyUSB1" />
+  <param name="/sicklms/baud" value="38400" />
+  <param name="/sicklms/port" value="$(arg lidar)" />
+  <node pkg="rosserial_python" type="serial_node.py" name="serial_node.py" output="screen" args="$(arg arduino)" />
+  <node pkg="sicktoolbox_wrapper" type="sicklms" name="sicklms" output="screen" />
+  <include file="$(find openni2_launch)/launch/openni2.launch" />
+</launch>
