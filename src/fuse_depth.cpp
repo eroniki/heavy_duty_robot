@@ -34,8 +34,8 @@ ros::Publisher fusedPublisher;
 
 void BGRCallback(const sensor_msgs::ImageConstPtr& msg);
 void depthMapCallback(const sensor_msgs::ImageConstPtr& msg);
-void fuse();
-void fuseDepthwithColor();
+void fuseDepthwithRGB();
+void mergeDepthwithColor();
 
 int main(int argc, char** argv){
   ros::init(argc, argv, "fuse_depth");
@@ -68,7 +68,6 @@ void BGRCallback(const sensor_msgs::ImageConstPtr& msg) {
     ROS_ERROR("cv_bridge exception: %s", e.what());
     return;
   }
-  fuseDepthwithColor();
   // Update GUI Window
   cv::imshow("OPENCV_WINDOW", frameBGR);
   cv::waitKey(3);
@@ -90,7 +89,7 @@ void depthMapCallback(const sensor_msgs::ImageConstPtr& msg) {
         depthMap.at<float>(i,j) = 0;
     }
   std::cout<<"Depth: "<<depthMap.type()<<depthMap.size()<<cv::sum(depthMap)<<std::endl;
-  fuseDepthwithColor();
+  mergeDepthwithColor();
   // Update GUI Window
   cv::imshow("OPENCV_WINDOW 2", cv_ptr->image);
   cv::waitKey(3);
@@ -147,7 +146,7 @@ void fuse() {
   fusedPublisher.publish(mat_msg);
 }
 
-void fuseDepthwithColor() {
+void mergeDepthwithColor() {
 	cv::Mat _BGR, _depthMap;
 	std::vector<cv::Mat> channels;
 
@@ -165,5 +164,5 @@ void fuseDepthwithColor() {
 
 	BGRD.create(frameBGR.size(),CV_32FC4);
 	cv::merge(channels, BGRD);
-  fuse();
+  fuseDepthwithRGB();
 }
