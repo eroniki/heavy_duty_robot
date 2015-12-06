@@ -12,6 +12,7 @@
 #include <sensor_msgs/image_encodings.h>
 #include <sensor_msgs/Image.h>
 #include <image_transport/image_transport.h>
+#include <std_msgs/Float64MultiArray.h>
 
 #include <iostream>
 #include <cstdio>
@@ -29,6 +30,7 @@
 
 cv::Mat frameBGR, depthMap, BGRD;
 cv_bridge::CvImage _fused;
+ros::Publisher fusedPublisher;
 
 void BGRCallback(const sensor_msgs::ImageConstPtr& msg);
 void depthMapCallback(const sensor_msgs::ImageConstPtr& msg);
@@ -37,14 +39,19 @@ void fuseDepthwithColor();
 
 int main(int argc, char** argv){
   ros::init(argc, argv, "fuse_depth");
-	ros::NodeHandle nh;
+
+  ros::NodeHandle nh;
   image_transport::ImageTransport depthMapTransport(nh);
   image_transport::ImageTransport BGRTransport(nh);
   image_transport::ImageTransport fusedTransport(nh);
 
   image_transport::Subscriber depthMapSubscriber = depthMapTransport.subscribe("/camera/depth/image", 1, depthMapCallback);
   image_transport::Subscriber BGRSubscriber = BGRTransport.subscribe("/camera/rgb/image_rect_color", 1, BGRCallback);
-  image_transport::Publisher fusedPublisher = fusedTransport.advertise("/fused_depth", 1);
+  fusedPublisher = nh.advertise<std_msgs::Float64MultiArray>("/fused_depth", 1000);
+
+  frameBGR = cv::Mat::zeros(480,640, CV_8UC1);
+  depthMap = cv::Mat::zeros(480,640, CV_32FC1);
+  BGRD = cv::Mat::zeros(480,640, CV_32FC4);
 
   ros::spin();
 
@@ -107,6 +114,37 @@ void fuse() {
   cv::Mat dst;
   cv::normalize(normDistance, dst, 0, 1, cv::NORM_MINMAX);
 	cv::imshow("l2 norm", dst);
+  cv::Mat distanceChar, edges;
+  dst = dst*255;
+  dst.convertTo(distanceChar, CV_8UC1);
+  cv::Canny(distanceChar, edges, 8, 20);
+  imshow("Canny", edges);
+  std_msgs::Float64MultiArray mat_msg;
+  mat_msg.layout.dim.push_back(std_msgs::MultiArrayDimension());
+  mat_msg.layout.dim.push_back(std_msgs::MultiArrayDimension());
+  //mat_msg.layout.data_offset = 32;
+  mat_msg.layout.dim[0].label = "rows";
+  // number of rows
+  mat_msg.layout.dim[0].size = normDistance.rows;
+  //number of rows * number of columns
+  mat_msg.layout.dim[0].stride = normDistance.rows*normDistance.cols;
+  mat_msg.layout.dim[1].label = "columns";
+  // number of columns
+  mat_msg.layout.dim[1].size = normDistance.cols;
+  mat_msg.layout.dim[1].stride = normDistance.cols;
+
+  // loop over row indices and column indices
+  for (int rows = 0; rows < mat_msg.layout.dim[0].size; ++rows){
+      for (int cols = 0; cols < mat_msg.layout.dim[1].size; ++cols){
+
+          // push back each matrix value
+          mat_msg.data.push_back(normDistance.at<float>(rows,cols));
+
+      }
+  }
+
+  // publish message
+  fusedPublisher.publish(mat_msg);
 }
 
 void fuseDepthwithColor() {
@@ -117,6 +155,12 @@ void fuseDepthwithColor() {
 	depthMap.convertTo(_depthMap, CV_32FC1);
 
 	cv::split(_BGR, channels);
+  // normalize colors
+  for(size_t i=0; i<channels.size();i++){
+    double min, max;
+    cv::minMaxLoc(channels[i], &min, &max);
+    channels[i] = channels[i]/max;
+  }
 	channels.push_back(_depthMap);
 
 	BGRD.create(frameBGR.size(),CV_32FC4);
