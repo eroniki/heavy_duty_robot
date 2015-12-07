@@ -95,7 +95,7 @@ void depthMapCallback(const sensor_msgs::ImageConstPtr& msg) {
   cv::waitKey(3);
 }
 
-void fuse() {
+void fuseDepthwithRGB() {
 	cv::Mat normDistance(BGRD.size(), CV_32FC1);
   cv::Vec4f weights = cv::Vec4f(0.1,0.1,0.1,0.7);
 	for(int i=1; i<BGRD.rows-1; i++) {
