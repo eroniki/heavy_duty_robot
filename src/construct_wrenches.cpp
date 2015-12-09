@@ -30,7 +30,7 @@ int main(int argc, char **argv) {
   ros::NodeHandle nh;
   image_transport::ImageTransport BGRTransport(nh);
 
-  ros::Subscriber sub = nh.subscribe("/center_indices_by_location", 1000, circleCallback);
+  ros::Subscriber sub = nh.subscribe("/center_indices_by_votes", 1000, circleCallback);
   image_transport::Subscriber BGRSubscriber = BGRTransport.subscribe("/camera/rgb/image_rect_color", 1, BGRCallback);
   ros::spin();
 
@@ -54,7 +54,7 @@ void BGRCallback(const sensor_msgs::ImageConstPtr& msg) {
 
 void circleCallback(const std_msgs::Float64MultiArray::ConstPtr& mat_msg) {
   circles = cv::Mat::zeros(mat_msg->layout.dim[0].size, mat_msg->layout.dim[1].size, CV_32FC1);
-
+  cv::Mat canvas = frameBGR.clone();
   // msg->layout.dim[0] -> number of rows
   // msg->layout.dim[1] -> number of columns
   for (int i=0;i<mat_msg->layout.dim[0].size;++i){
@@ -62,12 +62,13 @@ void circleCallback(const std_msgs::Float64MultiArray::ConstPtr& mat_msg) {
           circles.at<float>(i,j) = mat_msg->data[mat_msg->layout.dim[1].stride*i + j]; //mat_msg->layout.data_offset +
       }
 
-      cv::Point center = cv::Point((int)circles.at<float>(i,0), (int)circles.at<float>(i,1));
-      cv::Mat canvas = frameBGR.clone();
+      cv::Point center = cv::Point((int)circles.at<float>(i,1), (int)circles.at<float>(i,0));
+
       cv::circle(canvas, center, circles.at<float>(i,2), cv::Scalar(0,0,255), 2);
-      cv::imshow("Canvas", canvas);
-      cv::waitKey(3);
   }
+
+  cv::imshow("Canvas", canvas);
+  cv::waitKey(3);
 
   std::cout << "matrix recieved" << std::endl;
 }
