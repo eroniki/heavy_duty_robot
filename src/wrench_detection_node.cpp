@@ -18,7 +18,7 @@ ros::Publisher mat_pub2;
 
 arma::mat im;
 arma::cube H;
-int radius_max = 50;
+int radius_max = 30;
 int radius_min = 10;
 int theta = 360;
 int main(int argc, char **argv){
@@ -52,7 +52,7 @@ void imCallback(const std_msgs::Float64MultiArray::ConstPtr& im_msg){
         }
     }
     
-    std::cout << "matrix recieved" << std::endl;
+    std::cout << "matrix recieved: " << im.n_rows << "x" << im.n_cols << std::endl;
    
         
     // Create 3D tensor (stack of image sized matrices with each slice corresponding to a different radius
@@ -88,8 +88,8 @@ void imCallback(const std_msgs::Float64MultiArray::ConstPtr& im_msg){
         for (int r = radius_min - 1; r < radius_max; ++r){
             // loop over thetas
             for (int t = 0; t < theta; ++t){
-                a = edge_x(l) - r * cos(theta * 0.0174533);
-                b = edge_y(l) + r * sin(theta * 0.0174533);
+                a = edge_x(t) - (r + 1) * cos(t * 0.0174533);
+                b = edge_y(t) + (r + 1) * sin(t * 0.0174533);
 
                 if (round(a) < H.n_rows && round(b) < H.n_cols && round(a) >= 0 && round(b) >= 0){
                     H(round(a), round(b), r) += 1;
@@ -99,9 +99,9 @@ void imCallback(const std_msgs::Float64MultiArray::ConstPtr& im_msg){
     }
 
     // Initialize containers for extracted centers
-    arma::uvec center_r;
+    //arma::uvec center_r;
     arma::uvec all_center_indices;
-    arma::vec r_r;
+    //arma::vec r_r;
     arma::vec all_r;
     arma::vec center_x;
     arma::vec center_y;
@@ -109,33 +109,43 @@ void imCallback(const std_msgs::Float64MultiArray::ConstPtr& im_msg){
 
     arma::mat center_indices;           // to be sorted left -> right -> top -> bottom
     arma::mat center_indices_vote;      // to be sorted by number of votes
+    arma::mat H_trans;
 
     for (int slice = radius_min - 1; slice < radius_max; ++slice){
         
         // extract only local maxima which are circle centers
-        double thresh = 0.9 * arma::max(arma::max(H.slice(slice)));
+        double thresh = 0.99 * arma::max(arma::max(H.slice(slice)));
         H.slice(slice).elem(arma::find(H.slice(slice) < thresh)).zeros();
         
         // transpose H slice so that find will traverse original values left -> right -> top -> bottom
         // TODO -> this needs to be its own matrix, otherwise when you pull the values for votes vector they will be wrong
-        H.slice(slice).t(); 
+        H_trans =  H.slice(slice).t();
         
         // find center locations (columnwise on transposed slice corresponds to l -> r -> t -> b in original slice)
-        center_r = arma::find(H.slice(slice) != 0);
+        arma::uvec center_r = arma::find(H_trans != 0);
         
+
         // create another vector with radii
-        r_r.zeros(center_r.n_elem);
-        r_r += slice; // don't forget that this is the smallest r value, set in for loop initializer above
+        arma::vec r_r = arma::zeros<arma::vec>(center_r.n_elem);
+        r_r += slice + 1; // don't forget that this is the smallest r value, set in for loop initializer above
 
         //edges = arma::conv_to<arma::vec>::from(edge);
         //center_r += 1;
-       
-        // "push back" centers and radii from the current slice
-        all_center_indices.resize(all_center_indices.n_elem + center_r.n_elem);
-        all_r.resize(all_r.n_elem + r_r.n_elem);
-        all_center_indices.subvec(all_center_indices.n_elem - center_r.n_elem, all_center_indices.n_elem - 1) = center_r;    
-        all_r.subvec(all_r.n_elem - r_r.n_elem, all_r.n_elem - 1) = r_r;
-    
+
+        if (!all_center_indices.is_empty() && !all_r.is_empty()){
+
+			// "push back" centers and radii from the current slice
+			all_center_indices.resize(all_center_indices.n_elem + center_r.n_elem);
+			all_r.resize(all_r.n_elem + r_r.n_elem);
+			all_center_indices.subvec(all_center_indices.n_elem - center_r.n_elem, all_center_indices.n_elem - 1) = center_r;
+			all_r.subvec(all_r.n_elem - r_r.n_elem, all_r.n_elem - 1) = r_r;
+
+        }
+        else{
+			// "push back" centers and radii from the current slice
+        	all_center_indices = center_r;
+        	all_r = r_r;
+        }
         // REMOVED COMMENTED SECTION AND PUT IN SCATCH.TXT (DESKTOP)
 
     }
@@ -177,12 +187,20 @@ void imCallback(const std_msgs::Float64MultiArray::ConstPtr& im_msg){
     center_indices.set_size(center_x.n_elem, 3);
     center_indices_vote.set_size(center_x.n_elem, 3);
 
-    center_indices.col(0) = center_y;
-    center_indices.col(1) = center_x;
+    center_indices.col(0) = center_x;
+    center_indices.col(1) = center_y;
     center_indices.col(2) = all_r;
+
+//    std::cout << "size: " << center_indices.n_rows << "x" << center_indices.n_cols << std::endl;
+//    std::cout << "max x: " << arma::max(center_indices.col(0)) << std::endl;
+//    std::cout << "max y: " << arma::max(center_indices.col(1)) << std::endl;
+//    std::cout << "max r: " << arma::max(center_indices.col(2)) << std::endl;
     
+
+
+
     for (int vote_sort = 0; vote_sort < votes.n_elem; ++vote_sort){
-        votes(vote_sort) = H(center_indices(vote_sort, 0), center_indices(vote_sort, 1), center_indices(vote_sort, 2)); 
+        votes(vote_sort) = H(center_indices(vote_sort, 0), center_indices(vote_sort, 1), center_indices(vote_sort, 2) - 1);
     }
     
     arma::vec transfer_vec;
@@ -195,7 +213,13 @@ void imCallback(const std_msgs::Float64MultiArray::ConstPtr& im_msg){
 
 	transfer_vec = center_indices.col(2);
     center_indices_vote.col(2) = transfer_vec(arma::sort_index(votes));
- 
+
+    std::cout << "# circles: " << center_indices.n_rows << "and " << center_indices_vote.n_rows << std::endl;
+
+    if(!center_indices_vote.is_empty() && !center_indices.is_empty()){
+    	center_indices_vote = center_indices_vote.submat(0,0,20,2);
+
+
     // create message when ready to publish
 	std_msgs::Float64MultiArray mat_msg;
 	mat_msg.layout.dim.push_back(std_msgs::MultiArrayDimension());
@@ -251,4 +275,5 @@ void imCallback(const std_msgs::Float64MultiArray::ConstPtr& im_msg){
 	// publish message
 	mat_pub.publish(mat_msg);
     mat_pub2.publish(mat_msg2);
+    }
 }
