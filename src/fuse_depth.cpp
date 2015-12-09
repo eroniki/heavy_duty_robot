@@ -115,8 +115,9 @@ void fuseDepthwithRGB() {
   cv::Mat distanceChar, edges;
   dst = dst*255;
   dst.convertTo(distanceChar, CV_8UC1);
-  cv::imshow("l2 norm", distanceChar);
-  cv::Canny(distanceChar, edges, 2, 20);
+  cv::imshow("Norm Char", distanceChar);
+  cv::blur(distanceChar, edges, cv::Size(3,3));
+  cv::Canny(edges, edges, 2, 20);
   imshow("Canny", edges);
   std_msgs::Float64MultiArray mat_msg;
   mat_msg.layout.dim.push_back(std_msgs::MultiArrayDimension());
